@@ -1,7 +1,7 @@
 import http from "http";
 import fetch from "node-fetch";
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const BASE_ID = process.env.AIRTABLE_BASE_ID;
