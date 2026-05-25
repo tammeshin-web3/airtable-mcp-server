@@ -1,95 +1,58 @@
 {
   "name": "airtable-mcp-server",
   "version": "1.0.0",
-  "description": "MCP server for Airtable CRUD operations for Sacred Obsidian Content Hub.",
-  "tools": [
-    {
-      "name": "list",
-      "description": "List all records from the Airtable table.",
-      "input_schema": {
-        "type": "object",
-        "properties": {}
-      }
+  "description": "MCP server for Airtable CRUD, search, views, and schema access.",
+  "endpoints": {
+    "list": {
+      "method": "GET",
+      "path": "/list",
+      "description": "List all records in the Airtable table."
     },
-    {
-      "name": "get",
-      "description": "Get a single Airtable record by ID.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string" }
-        },
-        "required": ["id"]
-      }
+    "get": {
+      "method": "GET",
+      "path": "/get",
+      "query_params": ["id"],
+      "description": "Retrieve a single record by ID."
     },
-    {
-      "name": "create",
-      "description": "Create a new Airtable record with provided fields.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "fields": { "type": "object" }
-        },
-        "required": ["fields"]
-      }
+    "create": {
+      "method": "POST",
+      "path": "/create",
+      "body": {
+        "fields": "Object of Airtable fields to create."
+      },
+      "description": "Create a new Airtable record."
     },
-    {
-      "name": "update",
-      "description": "Update an existing Airtable record by ID.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string" },
-          "fields": { "type": "object" }
-        },
-        "required": ["id", "fields"]
-      }
+    "update": {
+      "method": "PATCH",
+      "path": "/update",
+      "query_params": ["id"],
+      "body": {
+        "fields": "Object of Airtable fields to update."
+      },
+      "description": "Update an existing Airtable record."
     },
-    {
-      "name": "delete",
-      "description": "Delete an Airtable record by ID.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string" }
-        },
-        "required": ["id"]
-      }
+    "delete": {
+      "method": "DELETE",
+      "path": "/delete",
+      "query_params": ["id"],
+      "description": "Delete an Airtable record by ID."
     },
-    {
-      "name": "search",
-      "description": "Search Airtable records by field and value.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "field": { "type": "string" },
-          "value": { "type": "string" }
-        },
-        "required": ["field", "value"]
-      }
+    "search": {
+      "method": "GET",
+      "path": "/search",
+      "query_params": ["field", "value"],
+      "description": "Search Airtable records by field and value."
     },
-    {
-      "name": "view",
-      "description": "List records from a specific Airtable view.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" }
-        },
-        "required": ["name"]
-      }
+    "view": {
+      "method": "GET",
+      "path": "/view",
+      "query_params": ["name"],
+      "description": "List records from a specific Airtable view."
     },
-    {
-      "name": "schema",
-      "description": "Retrieve the Airtable table schema.",
-      "input_schema": {
-        "type": "object",
-        "properties": {}
-      }
+    "schema": {
+      "method": "GET",
+      "path": "/schema",
+      "description": "Retrieve Airtable base schema."
     }
-  ],
-  "server": {
-    "type": "http",
-    "url": "https://airtable-mcp-server-production-e3c2.up.railway.app"
   }
 }
