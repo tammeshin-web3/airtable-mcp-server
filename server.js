@@ -3,9 +3,9 @@ import fetch from "node-fetch";
 
 const PORT = process.env.PORT || 8080;
 
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
-const BASE_ID = process.env.AIRTABLE_BASE_ID;
-const TABLE_NAME = process.env.AIRTABLE_TABLE_NAME;
+const AIRTABLE_API_KEY = process.env.Airtable_API_KEY;
+const BASE_ID = process.env.Airtable_BASE_ID;
+const TABLE_NAME = process.env.Airtable_TABLE_NAME;
 
 async function listRecords() {
   const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}`;
