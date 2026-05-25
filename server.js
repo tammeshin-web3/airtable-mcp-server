@@ -12,7 +12,7 @@ async function listRecords() {
 
   const response = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+      Authorization: `Bearer ${Airtable_API_KEY}`,
     },
   });
 
