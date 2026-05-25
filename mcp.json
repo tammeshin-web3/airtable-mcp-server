@@ -1,0 +1,95 @@
+{
+  "name": "airtable-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Airtable CRUD operations for Sacred Obsidian Content Hub.",
+  "tools": [
+    {
+      "name": "list",
+      "description": "List all records from the Airtable table.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get",
+      "description": "Get a single Airtable record by ID.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "create",
+      "description": "Create a new Airtable record with provided fields.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "fields": { "type": "object" }
+        },
+        "required": ["fields"]
+      }
+    },
+    {
+      "name": "update",
+      "description": "Update an existing Airtable record by ID.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "fields": { "type": "object" }
+        },
+        "required": ["id", "fields"]
+      }
+    },
+    {
+      "name": "delete",
+      "description": "Delete an Airtable record by ID.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "search",
+      "description": "Search Airtable records by field and value.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "field": { "type": "string" },
+          "value": { "type": "string" }
+        },
+        "required": ["field", "value"]
+      }
+    },
+    {
+      "name": "view",
+      "description": "List records from a specific Airtable view.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "schema",
+      "description": "Retrieve the Airtable table schema.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "server": {
+    "type": "http",
+    "url": "https://airtable-mcp-server-production-e3c2.up.railway.app"
+  }
+}
