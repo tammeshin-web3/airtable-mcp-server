@@ -9,7 +9,24 @@ const BASE_ID = process.env.Airtable_BASE_ID;
 const TABLE_NAME = process.env.Airtable_TABLE_NAME;
 
 /* -------------------------------------------------------
-   HELPER FUNCTIONS (GLOBAL, NOT NESTED)
+   JSON BODY PARSER (REQUIRED FOR POST/PATCH/DELETE)
+------------------------------------------------------- */
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", chunk => (body += chunk));
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+/* -------------------------------------------------------
+   HELPER FUNCTIONS (GLOBAL)
 ------------------------------------------------------- */
 
 async function listRecords() {
@@ -93,8 +110,13 @@ async function getSchema() {
 ------------------------------------------------------- */
 
 const server = http.createServer(async (req, res) => {
-  // LIST ALL RECORDS
-  if (req.url === "/list") {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const path = urlObj.pathname;
+
+  /* -------------------------
+     GET /list
+  ------------------------- */
+  if (path === "/list" && req.method === "GET") {
     try {
       const records = await listRecords();
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -105,75 +127,95 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // GET ONE RECORD
-  if (req.url.startsWith("/get")) {
-    const id = new URL(req.url, `http://${req.headers.host}`).searchParams.get("id");
+  /* -------------------------
+     GET /get?id=xxx
+  ------------------------- */
+  if (path === "/get" && req.method === "GET") {
+    const id = urlObj.searchParams.get("id");
     const data = await getRecord(id);
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify(data));
   }
 
-  // CREATE RECORD
-  if (req.url === "/create" && req.method === "POST") {
-    let body = "";
-    req.on("data", chunk => (body += chunk));
-    req.on("end", async () => {
-      const fields = JSON.parse(body);
-      const data = await createRecord(fields);
+  /* -------------------------
+     POST /create
+  ------------------------- */
+  if (path === "/create" && req.method === "POST") {
+    try {
+      const body = await parseBody(req);
+      const data = await createRecord(body.fields);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    });
-    return;
+      return res.end(JSON.stringify(data));
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: error.message }));
+    }
   }
 
-  // UPDATE RECORD
-  if (req.url.startsWith("/update") && req.method === "PATCH") {
-    const id = new URL(req.url, `http://${req.headers.host}`).searchParams.get("id");
-    let body = "";
-    req.on("data", chunk => (body += chunk));
-    req.on("end", async () => {
-      const fields = JSON.parse(body);
-      const data = await updateRecord(id, fields);
+  /* -------------------------
+     PATCH /update?id=xxx
+  ------------------------- */
+  if (path === "/update" && req.method === "PATCH") {
+    try {
+      const id = urlObj.searchParams.get("id");
+      const body = await parseBody(req);
+      const data = await updateRecord(id, body.fields);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    });
-    return;
+      return res.end(JSON.stringify(data));
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: error.message }));
+    }
   }
 
-  // DELETE RECORD
-  if (req.url.startsWith("/delete") && req.method === "DELETE") {
-    const id = new URL(req.url, `http://${req.headers.host}`).searchParams.get("id");
-    const data = await deleteRecord(id);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(data));
+  /* -------------------------
+     DELETE /delete?id=xxx
+  ------------------------- */
+  if (path === "/delete" && req.method === "DELETE") {
+    try {
+      const id = urlObj.searchParams.get("id");
+      const data = await deleteRecord(id);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(data));
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: error.message }));
+    }
   }
 
-  // SEARCH
-  if (req.url.startsWith("/search")) {
-    const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
-    const field = params.get("field");
-    const value = params.get("value");
+  /* -------------------------
+     GET /search?field=Title&value=Sacred
+  ------------------------- */
+  if (path === "/search" && req.method === "GET") {
+    const field = urlObj.searchParams.get("field");
+    const value = urlObj.searchParams.get("value");
     const data = await searchRecords(field, value);
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify(data));
   }
 
-  // LIST BY VIEW
-  if (req.url.startsWith("/view")) {
-    const view = new URL(req.url, `http://${req.headers.host}`).searchParams.get("name");
+  /* -------------------------
+     GET /view?name=Bot View: Writer Queue
+  ------------------------- */
+  if (path === "/view" && req.method === "GET") {
+    const view = urlObj.searchParams.get("name");
     const data = await listByView(view);
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify(data));
   }
 
-  // SCHEMA
-  if (req.url === "/schema") {
+  /* -------------------------
+     GET /schema
+  ------------------------- */
+  if (path === "/schema" && req.method === "GET") {
     const data = await getSchema();
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify(data));
   }
 
-  // DEFAULT RESPONSE
+  /* -------------------------
+     DEFAULT RESPONSE
+  ------------------------- */
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ status: "ok", message: "Airtable MCP server is running" }));
 });
