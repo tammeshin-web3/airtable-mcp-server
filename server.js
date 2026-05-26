@@ -2,7 +2,7 @@ import http from "http";
 import fetch from "node-fetch";
 
 const PORT = process.env.PORT || 8080;
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_API_KEY = process.env.Airtable_API_KEY;
 
 // Map of logical base keys → Airtable Base IDs
 const BASES = {
