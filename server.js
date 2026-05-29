@@ -156,13 +156,18 @@ async function searchRecords(baseKey, tableName, field, value) {
   return fetchJson(url);
 }
 
-async function listByView(baseKey, tableName, viewName) {
+async function listByView(baseKey, tableName, viewName, filterFormula) {
   const baseId = await validateBaseAndTable(baseKey, tableName);
-  const url =
-    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}` +
-    `?view=${encodeURIComponent(viewName)}`;
+
+  let url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?view=${encodeURIComponent(viewName)}`;
+
+  if (filterFormula) {
+    url += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
+  }
+
   return fetchJson(url);
 }
+
 
 /* -------------------------------------------------------
    SERVER + ROUTES
@@ -252,19 +257,39 @@ const server = http.createServer(async (req, res) => {
       return send(200, data);
     }
 
-    /* -------------------------
-       GET /view?base=&table=&name=
-    ------------------------- */
-    if (path === "/view" && req.method === "GET") {
-      const base = urlObj.searchParams.get("base");
-      const table = urlObj.searchParams.get("table");
-      const view = urlObj.searchParams.get("name");
-      if (!view) throw new Error("Missing 'name' query parameter");
-      const data = await listByView(base, table, view);
-      return send(200, data);
+   /* -------------------------
+   GET /view?base=&table=&name=&filter=
+------------------------- */
+if (path === "/view" && req.method === "GET") {
+  try {
+    const base = urlObj.searchParams.get("base");
+    const table = urlObj.searchParams.get("table");
+    const view = urlObj.searchParams.get("name");
+    const filter = urlObj.searchParams.get("filter"); // optional
+
+    if (!view) {
+      return send(400, { error: "Missing 'name' (view) query parameter" });
     }
 
-    /* -------------------------
+    const data = await listByView(base, table, view, filter);
+
+    return send(200, {
+      ok: true,
+      base,
+      table,
+      view,
+      filter: filter || null,
+      records: data.records || []
+    });
+
+  } catch (err) {
+    return send(400, {
+      ok: false,
+      error: err.message || "Unknown error in /view route"
+    });
+  }
+}
+/*---------------------------------
        GET /schema?base=contentHub|riseThrive|newsletterMaestro
        - If base provided → schema for that base
        - If no base → schemas for all bases (that can be loaded)
