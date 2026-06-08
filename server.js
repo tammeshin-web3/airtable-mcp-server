@@ -211,7 +211,20 @@ async function getReadyImageRecords(baseKey, tableName, options = {}) {
   const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?${params.toString()}`;
   return fetchJson(url);
 }
+async function getImageQueue() {
+  const base = "contentHub";
+  const table = "Content Production";
 
+  const filterFormula = `OR(
+    {Publish Workflow Stage} = "Image Needed",
+    {Publish Workflow Stage} = "Image Regenerate"
+  )`;
+
+  return getReadyImageRecords(base, table, {
+    filterFormula,
+    maxRecords: 1
+  });
+}
 /**
  * Update image-related status fields in a single record.
  * Body:
@@ -491,7 +504,16 @@ const server = http.createServer(async (req, res) => {
     /* ---------------------------------------------------
        IMAGE WORKFLOW ROUTES (MCP-FRIENDLY)
     --------------------------------------------------- */
+// GET /get_image_queue
+if (path === "/get_image_queue" && req.method === "GET") {
+  const data = await getImageQueue();
 
+  return send(200, {
+    ok: true,
+    queue: "image",
+    records: data.records || []
+  });
+}
     // POST /get_ready_image_records?base=&table=
     // Body: { view?, filterFormula?, maxRecords? }
     if (path === "/get_ready_image_records" && req.method === "POST") {
