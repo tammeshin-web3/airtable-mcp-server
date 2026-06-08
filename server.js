@@ -216,8 +216,8 @@ async function getImageQueue() {
   const table = "Content Production";
 
   const filterFormula = `OR(
-    {Workflow Stage} = "Image Needed",
-    {Workflow Stage} = "Image Regenerate"
+    {Workflow Stage} = "Image needed",
+    {Workflow Stage} = "Image regenerate"
   )`;
 
   return getReadyImageRecords(base, table, {
