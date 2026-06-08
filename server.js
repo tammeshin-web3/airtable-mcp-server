@@ -53,11 +53,22 @@ async function fetchJson(url, options = {}) {
       ...(options.headers || {})
     }
   });
-  const data = await res.json();
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
   if (!res.ok) {
-    const msg = data?.error?.message || JSON.stringify(data);
+    const msg =
+      data?.error?.message ||
+      data?.error ||
+      JSON.stringify(data || { status: res.status, statusText: res.statusText });
     throw new Error(msg);
   }
+
   return data;
 }
 
@@ -109,9 +120,12 @@ async function validateBaseAndTable(baseKey, tableName) {
    RECORD OPERATIONS (DYNAMIC BASE + TABLE)
 ------------------------------------------------------- */
 
-async function listRecords(baseKey, tableName) {
+async function listRecords(baseKey, tableName, extraQuery = "") {
   const baseId = await validateBaseAndTable(baseKey, tableName);
-  const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`;
+  let url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`;
+  if (extraQuery) {
+    url += `?${extraQuery}`;
+  }
   return fetchJson(url);
 }
 
@@ -168,6 +182,183 @@ async function listByView(baseKey, tableName, viewName, filterFormula) {
   return fetchJson(url);
 }
 
+/* -------------------------------------------------------
+   IMAGE WORKFLOW HELPERS
+------------------------------------------------------- */
+
+/**
+ * Fetch records that are "ready" for image generation.
+ * This stays generic: n8n (or the caller) controls base/table and filter.
+ *
+ * Query params:
+ *   base, table
+ * Body:
+ *   {
+ *     "view": "optional view name",
+ *     "filterFormula": "optional Airtable formula",
+ *     "maxRecords": 50 (optional)
+ *   }
+ */
+async function getReadyImageRecords(baseKey, tableName, options = {}) {
+  const { view, filterFormula, maxRecords } = options;
+  const baseId = await validateBaseAndTable(baseKey, tableName);
+
+  const params = new URLSearchParams();
+  if (view) params.set("view", view);
+  if (filterFormula) params.set("filterByFormula", filterFormula);
+  if (maxRecords) params.set("maxRecords", String(maxRecords));
+
+  const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?${params.toString()}`;
+  return fetchJson(url);
+}
+
+/**
+ * Update image-related status fields in a single record.
+ * Body:
+ *   {
+ *     "id": "recXXXX",
+ *     "fields": {
+ *       "Workflow Status": "Image Generated",
+ *       "Image Status": "Generated"
+ *     }
+ *   }
+ */
+async function updateImageStatus(baseKey, tableName, id, fields) {
+  if (!id) throw new Error("Missing 'id' in body for updateImageStatus");
+  if (!fields || typeof fields !== "object") {
+    throw new Error("Missing or invalid 'fields' in body for updateImageStatus");
+  }
+  return updateRecord(baseKey, tableName, id, fields);
+}
+
+/**
+ * Save generated image file metadata on a record.
+ * Body:
+ *   {
+ *     "id": "recXXXX",
+ *     "fileIdField": "Image File ID",
+ *     "fileId": "abc123",
+ *     "fileUrlField": "Image URL",
+ *     "fileUrl": "https://...",
+ *     "extraFields": {
+ *       "Image Status": "Generated",
+ *       "Workflow Status": "Image Generated"
+ *     }
+ *   }
+ */
+async function saveImageFileId(baseKey, tableName, payload) {
+  const {
+    id,
+    fileIdField,
+    fileId,
+    fileUrlField,
+    fileUrl,
+    extraFields = {}
+  } = payload || {};
+
+  if (!id) throw new Error("Missing 'id' in body for saveImageFileId");
+  if (!fileIdField || !fileId) {
+    throw new Error("Missing 'fileIdField' or 'fileId' in body for saveImageFileId");
+  }
+
+  const fields = {
+    [fileIdField]: fileId,
+    ...(fileUrlField && fileUrl ? { [fileUrlField]: fileUrl } : {}),
+    ...(extraFields && typeof extraFields === "object" ? extraFields : {})
+  };
+
+  return updateRecord(baseKey, tableName, id, fields);
+}
+
+/**
+ * Save WordPress publish results on a record.
+ * Body:
+ *   {
+ *     "id": "recXXXX",
+ *     "wpMediaIdField": "WP Media ID",
+ *     "wpMediaId": 123,
+ *     "wpMediaUrlField": "WP Media URL",
+ *     "wpMediaUrl": "https://...",
+ *     "wpPostIdField": "WP Post ID",
+ *     "wpPostId": 456,
+ *     "extraFields": {
+ *       "WP Publish Status": "Success",
+ *       "Image Status": "Published"
+ *     }
+ *   }
+ */
+async function saveWpPublishResults(baseKey, tableName, payload) {
+  const {
+    id,
+    wpMediaIdField,
+    wpMediaId,
+    wpMediaUrlField,
+    wpMediaUrl,
+    wpPostIdField,
+    wpPostId,
+    extraFields = {}
+  } = payload || {};
+
+  if (!id) throw new Error("Missing 'id' in body for saveWpPublishResults");
+
+  const fields = {
+    ...(wpMediaIdField && wpMediaId !== undefined
+      ? { [wpMediaIdField]: wpMediaId }
+      : {}),
+    ...(wpMediaUrlField && wpMediaUrl
+      ? { [wpMediaUrlField]: wpMediaUrl }
+      : {}),
+    ...(wpPostIdField && wpPostId !== undefined
+      ? { [wpPostIdField]: wpPostId }
+      : {}),
+    ...(extraFields && typeof extraFields === "object" ? extraFields : {})
+  };
+
+  if (Object.keys(fields).length === 0) {
+    throw new Error("No fields to update in saveWpPublishResults");
+  }
+
+  return updateRecord(baseKey, tableName, id, fields);
+}
+
+/**
+ * Log workflow errors into a dedicated table.
+ * Query:
+ *   base, table (this table is your error log table)
+ * Body:
+ *   {
+ *     "workflowName": "Image Generation",
+ *     "recordId": "recXXXX",
+ *     "errorMessage": "Something failed",
+ *     "payload": {...},
+ *     "timestamp": "2026-06-05T20:30:00Z"
+ *   }
+ */
+async function logWorkflowError(baseKey, tableName, payload) {
+  const {
+    workflowName,
+    recordId,
+    errorMessage,
+    payload: rawPayload,
+    timestamp
+  } = payload || {};
+
+  const fields = {
+    ...(workflowName ? { "Workflow Name": workflowName } : {}),
+    ...(recordId ? { "Record ID": recordId } : {}),
+    ...(errorMessage ? { "Error Message": errorMessage } : {}),
+    ...(timestamp ? { "Timestamp": timestamp } : {}),
+    ...(rawPayload
+      ? { "Raw Payload": JSON.stringify(rawPayload).slice(0, 50000) }
+      : {})
+  };
+
+  if (Object.keys(fields).length === 0) {
+    throw new Error("No fields to log in logWorkflowError");
+  }
+
+  return createRecord(baseKey, tableName, fields);
+}
 
 /* -------------------------------------------------------
    SERVER + ROUTES
@@ -177,7 +368,6 @@ const server = http.createServer(async (req, res) => {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
   const path = urlObj.pathname;
 
-  // Small helper to send JSON
   const send = (status, payload) => {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(payload));
@@ -185,8 +375,10 @@ const server = http.createServer(async (req, res) => {
 
   try {
     /* -------------------------
-       GET /list?base=&table=
+       GENERIC CRUD ROUTES
     ------------------------- */
+
+    // GET /list?base=&table=
     if (path === "/list" && req.method === "GET") {
       const base = urlObj.searchParams.get("base");
       const table = urlObj.searchParams.get("table");
@@ -194,9 +386,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, data);
     }
 
-    /* -------------------------
-       GET /get?base=&table=&id=
-    ------------------------- */
+    // GET /get?base=&table=&id=
     if (path === "/get" && req.method === "GET") {
       const base = urlObj.searchParams.get("base");
       const table = urlObj.searchParams.get("table");
@@ -206,9 +396,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, data);
     }
 
-    /* -------------------------
-       POST /create?base=&table=
-    ------------------------- */
+    // POST /create?base=&table=
     if (path === "/create" && req.method === "POST") {
       const base = urlObj.searchParams.get("base");
       const table = urlObj.searchParams.get("table");
@@ -217,9 +405,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, data);
     }
 
-    /* -------------------------
-       PATCH /update?base=&table=&id=
-    ------------------------- */
+    // PATCH /update?base=&table=&id=
     if (path === "/update" && req.method === "PATCH") {
       const base = urlObj.searchParams.get("base");
       const table = urlObj.searchParams.get("table");
@@ -230,9 +416,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, data);
     }
 
-    /* -------------------------
-       DELETE /delete?base=&table=&id=
-    ------------------------- */
+    // DELETE /delete?base=&table=&id=
     if (path === "/delete" && req.method === "DELETE") {
       const base = urlObj.searchParams.get("base");
       const table = urlObj.searchParams.get("table");
@@ -242,9 +426,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, data);
     }
 
-    /* -------------------------
-       GET /search?base=&table=&field=&value=
-    ------------------------- */
+    // GET /search?base=&table=&field=&value=
     if (path === "/search" && req.method === "GET") {
       const base = urlObj.searchParams.get("base");
       const table = urlObj.searchParams.get("table");
@@ -257,43 +439,37 @@ const server = http.createServer(async (req, res) => {
       return send(200, data);
     }
 
-   /* -------------------------
-   GET /view?base=&table=&name=&filter=
-------------------------- */
-if (path === "/view" && req.method === "GET") {
-  try {
-    const base = urlObj.searchParams.get("base");
-    const table = urlObj.searchParams.get("table");
-    const view = urlObj.searchParams.get("name");
-    const filter = urlObj.searchParams.get("filter"); // optional
+    // GET /view?base=&table=&name=&filter=
+    if (path === "/view" && req.method === "GET") {
+      try {
+        const base = urlObj.searchParams.get("base");
+        const table = urlObj.searchParams.get("table");
+        const view = urlObj.searchParams.get("name");
+        const filter = urlObj.searchParams.get("filter"); // optional
 
-    if (!view) {
-      return send(400, { error: "Missing 'name' (view) query parameter" });
+        if (!view) {
+          return send(400, { ok: false, error: "Missing 'name' (view) query parameter" });
+        }
+
+        const data = await listByView(base, table, view, filter);
+
+        return send(200, {
+          ok: true,
+          base,
+          table,
+          view,
+          filter: filter || null,
+          records: data.records || []
+        });
+      } catch (err) {
+        return send(400, {
+          ok: false,
+          error: err.message || "Unknown error in /view route"
+        });
+      }
     }
 
-    const data = await listByView(base, table, view, filter);
-
-    return send(200, {
-      ok: true,
-      base,
-      table,
-      view,
-      filter: filter || null,
-      records: data.records || []
-    });
-
-  } catch (err) {
-    return send(400, {
-      ok: false,
-      error: err.message || "Unknown error in /view route"
-    });
-  }
-}
-/*---------------------------------
-       GET /schema?base=contentHub|riseThrive|newsletterMaestro
-       - If base provided → schema for that base
-       - If no base → schemas for all bases (that can be loaded)
-    ------------------------- */
+    // GET /schema?base=...
     if (path === "/schema" && req.method === "GET") {
       const base = urlObj.searchParams.get("base");
 
@@ -304,13 +480,106 @@ if (path === "/view" && req.method === "GET") {
         return send(200, { base, schema: cache.raw });
       }
 
-      // All bases
       const result = {};
       for (const key of Object.keys(BASES)) {
         await ensureSchemaLoaded(key);
         result[key] = SCHEMA_CACHE[key]?.raw || null;
       }
       return send(200, result);
+    }
+
+    /* ---------------------------------------------------
+       IMAGE WORKFLOW ROUTES (MCP-FRIENDLY)
+    --------------------------------------------------- */
+
+    // POST /get_ready_image_records?base=&table=
+    // Body: { view?, filterFormula?, maxRecords? }
+    if (path === "/get_ready_image_records" && req.method === "POST") {
+      const base = urlObj.searchParams.get("base");
+      const table = urlObj.searchParams.get("table");
+      const body = await parseBody(req);
+
+      const data = await getReadyImageRecords(base, table, {
+        view: body.view,
+        filterFormula: body.filterFormula,
+        maxRecords: body.maxRecords
+      });
+
+      return send(200, {
+        ok: true,
+        base,
+        table,
+        records: data.records || []
+      });
+    }
+
+    // PATCH /update_image_status?base=&table=
+    // Body: { id, fields: { ... } }
+    if (path === "/update_image_status" && req.method === "PATCH") {
+      const base = urlObj.searchParams.get("base");
+      const table = urlObj.searchParams.get("table");
+      const body = await parseBody(req);
+
+      const { id, fields } = body || {};
+      const data = await updateImageStatus(base, table, id, fields);
+
+      return send(200, {
+        ok: true,
+        base,
+        table,
+        record: data
+      });
+    }
+
+    // POST /save_image_file_id?base=&table=
+    // Body: see saveImageFileId helper
+    if (path === "/save_image_file_id" && req.method === "POST") {
+      const base = urlObj.searchParams.get("base");
+      const table = urlObj.searchParams.get("table");
+      const body = await parseBody(req);
+
+      const data = await saveImageFileId(base, table, body);
+
+      return send(200, {
+        ok: true,
+        base,
+        table,
+        record: data
+      });
+    }
+
+    // POST /save_wp_publish_results?base=&table=
+    // Body: see saveWpPublishResults helper
+    if (path === "/save_wp_publish_results" && req.method === "POST") {
+      const base = urlObj.searchParams.get("base");
+      const table = urlObj.searchParams.get("table");
+      const body = await parseBody(req);
+
+      const data = await saveWpPublishResults(base, table, body);
+
+      return send(200, {
+        ok: true,
+        base,
+        table,
+        record: data
+      });
+    }
+
+    // POST /log_workflow_error?base=&table=
+    // Body: see logWorkflowError helper
+    if (path === "/log_workflow_error" && req.method === "POST") {
+      const base = urlObj.searchParams.get("base");
+      const table = urlObj.searchParams.get("table");
+      const body = await parseBody(req);
+
+      const data = await logWorkflowError(base, table, body);
+
+      return send(200, {
+        ok: true,
+        base,
+        table,
+        record: data
+      });
     }
 
     /* -------------------------
@@ -324,7 +593,7 @@ if (path === "/view" && req.method === "GET") {
 
   } catch (error) {
     console.error("Error handling request:", error.message);
-    return send(400, { error: error.message });
+    return send(400, { ok: false, error: error.message });
   }
 });
 
