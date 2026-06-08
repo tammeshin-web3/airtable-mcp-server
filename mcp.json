@@ -1,26 +1,21 @@
 {
   "name": "airtable-mcp-server",
-  "version": "1.0.0",
-  "description": "Multi-base Airtable MCP server with dynamic base/table routing and strict schema validation.",
+  "version": "2.0.0",
+  "description": "Multi-base Airtable MCP server with CRUD tools and workflow-specific tools for image generation, publishing, and error logging.",
   "author": "tammeshin-web3",
   "license": "MIT",
 
   "mcp": {
     "commands": [
+      /* -------------------------------------------------------
+         GENERIC CRUD COMMANDS (UNCHANGED)
+      ------------------------------------------------------- */
       {
         "name": "list",
         "description": "List all records from a specific table in a specific base.",
         "arguments": {
-          "base": {
-            "type": "string",
-            "description": "Base key (contentHub, riseThrive, newsletterMaestro).",
-            "required": true
-          },
-          "table": {
-            "type": "string",
-            "description": "Table name within the selected base.",
-            "required": true
-          }
+          "base": { "type": "string", "required": true },
+          "table": { "type": "string", "required": true }
         }
       },
       {
@@ -76,18 +71,88 @@
         "arguments": {
           "base": { "type": "string", "required": true },
           "table": { "type": "string", "required": true },
-          "name": { "type": "string", "required": true }
+          "name": { "type": "string", "required": true },
+          "filter": { "type": "string", "required": false }
         }
       },
       {
         "name": "schema",
         "description": "Retrieve schema for one base or all bases.",
         "arguments": {
-          "base": {
-            "type": "string",
-            "required": false,
-            "description": "Optional base key. If omitted, returns schemas for all bases."
-          }
+          "base": { "type": "string", "required": false }
+        }
+      },
+
+      /* -------------------------------------------------------
+         WORKFLOW-SPECIFIC COMMANDS (NEW)
+      ------------------------------------------------------- */
+
+      {
+        "name": "get_ready_image_records",
+        "description": "Fetch Airtable records ready for image generation using optional view or filter formula.",
+        "arguments": {
+          "base": { "type": "string", "required": true },
+          "table": { "type": "string", "required": true },
+          "view": { "type": "string", "required": false },
+          "filterFormula": { "type": "string", "required": false },
+          "maxRecords": { "type": "number", "required": false }
+        }
+      },
+
+      {
+        "name": "update_image_status",
+        "description": "Update workflow/image status fields for a single Airtable record.",
+        "arguments": {
+          "base": { "type": "string", "required": true },
+          "table": { "type": "string", "required": true },
+          "id": { "type": "string", "required": true },
+          "fields": { "type": "object", "required": true }
+        }
+      },
+
+      {
+        "name": "save_image_file_id",
+        "description": "Save generated image file ID/URL and related fields on an Airtable record.",
+        "arguments": {
+          "base": { "type": "string", "required": true },
+          "table": { "type": "string", "required": true },
+          "id": { "type": "string", "required": true },
+          "fileIdField": { "type": "string", "required": true },
+          "fileId": { "type": "string", "required": true },
+          "fileUrlField": { "type": "string", "required": false },
+          "fileUrl": { "type": "string", "required": false },
+          "extraFields": { "type": "object", "required": false }
+        }
+      },
+
+      {
+        "name": "save_wp_publish_results",
+        "description": "Save WordPress media/post IDs and URLs back to Airtable after publishing.",
+        "arguments": {
+          "base": { "type": "string", "required": true },
+          "table": { "type": "string", "required": true },
+          "id": { "type": "string", "required": true },
+          "wpMediaIdField": { "type": "string", "required": false },
+          "wpMediaId": { "type": ["string", "number"], "required": false },
+          "wpMediaUrlField": { "type": "string", "required": false },
+          "wpMediaUrl": { "type": "string", "required": false },
+          "wpPostIdField": { "type": "string", "required": false },
+          "wpPostId": { "type": ["string", "number"], "required": false },
+          "extraFields": { "type": "object", "required": false }
+        }
+      },
+
+      {
+        "name": "log_workflow_error",
+        "description": "Log workflow errors into a dedicated Airtable table for observability and debugging.",
+        "arguments": {
+          "base": { "type": "string", "required": true },
+          "table": { "type": "string", "required": true },
+          "workflowName": { "type": "string", "required": false },
+          "recordId": { "type": "string", "required": false },
+          "errorMessage": { "type": "string", "required": true },
+          "payload": { "type": ["object", "array", "string", "null"], "required": false },
+          "timestamp": { "type": "string", "required": false }
         }
       }
     ],
