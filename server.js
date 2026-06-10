@@ -505,7 +505,16 @@ const server = http.createServer(async (req, res) => {
         });
       }
     }
+// GET /get_outline_queue
+if (path === "/get_outline_queue" && req.method === "GET") {
+  const data = await getOutlineQueue();
 
+  return send(200, {
+    ok: true,
+    queue: "outline",
+    records: data.records || []
+  });
+}
     // GET /schema?base=...
     if (path === "/schema" && req.method === "GET") {
       const base = urlObj.searchParams.get("base");
