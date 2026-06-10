@@ -219,7 +219,19 @@ async function getImageQueue() {
     {Workflow Stage} = "Image needed",
     {Workflow Stage} = "Image regenerate"
   )`;
+async function getImageContext(id) {
 
+  if (!id) {
+    throw new Error("Missing record id");
+  }
+
+  return getRecord(
+    "contentHub",
+    "Content Production",
+    id
+  );
+
+}
   return getReadyImageRecords(base, table, {
     filterFormula,
     maxRecords: 1
@@ -372,6 +384,18 @@ async function logWorkflowError(baseKey, tableName, payload) {
 
   return createRecord(baseKey, tableName, fields);
 }
+/* Call for outline generation agent */
+async function getOutlineQueue() {
+  const base = "contentHub";
+  const table = "Content Production";
+
+  const filterFormula = `{Status} = "Ready for Outline"`;
+
+  return getReadyImageRecords(base, table, {
+    filterFormula,
+    maxRecords: 1
+  });
+}
 
 /* -------------------------------------------------------
    SERVER + ROUTES
@@ -514,6 +538,19 @@ if (path === "/get_image_queue" && req.method === "GET") {
     records: data.records || []
   });
 }
+  // GET /get_image_context?id=
+if (path === "/get_image_context" && req.method === "GET") {
+
+  const id = urlObj.searchParams.get("id");
+
+  const data = await getImageContext(id);
+
+  return send(200, {
+    ok: true,
+    context: data
+  });
+
+}  
     // POST /get_ready_image_records?base=&table=
     // Body: { view?, filterFormula?, maxRecords? }
     if (path === "/get_ready_image_records" && req.method === "POST") {
