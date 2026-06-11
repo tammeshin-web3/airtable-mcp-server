@@ -181,7 +181,153 @@ async function listByView(baseKey, tableName, viewName, filterFormula) {
 
   return fetchJson(url);
 }
+/* -------------------------------------------------------
+ COMPANY OPERATIONS' HELPERS
+ -------------------------------------------------------*/
+/* Call for outline generation agent */
+async function getOutlineQueue() {
+  const base = "contentHub";
+  const table = "Content Production";
+  const filterFormula = `{Status} = "Ready for Outline"`;
+  return getReadyImageRecords(base, table, {
+    filterFormula,
+    maxRecords: 1
+  });
+}
+/* Save outlne results to record for Editorial Brief agent */
+async function saveOutlineResult(id, payload = {}) {
+  if (!id) {
+    throw new Error("Missing record id");
+  }
+  const {
+    outline,
+    contentGoal,
+    status = "Outline Ready"
+  } = payload;
+  if (!outline) {
+    throw new Error("Missing outline");
+  }
+  const fields = {
+    "AI Outline": outline,
+    ...(contentGoal ? { "Content Goal": contentGoal } : {}),
+    "Status": status
+  };
+  return updateRecord(
+    "contentHub",
+    "Content Production",
+    id,
+    fields
+  );
+}
+/**
+ * Log workflow errors into a dedicated table.
+ * Query:
+ *   base, table (this table is your error log table)
+ * Body:
+ *   {
+ *     "workflowName": "Image Generation",
+ *     "recordId": "recXXXX",
+ *     "errorMessage": "Something failed",
+ *     "payload": {...},
+ *     "timestamp": "2026-06-05T20:30:00Z"
+ *   }
+ */
+async function logWorkflowError(baseKey, tableName, payload) {
+  const {
+    workflowName,
+    recordId,
+    errorMessage,
+    payload: rawPayload,
+    timestamp
+  } = payload || {};
+  const fields = {
+    ...(workflowName ? { "Workflow Name": workflowName } : {}),
+    ...(recordId ? { "Record ID": recordId } : {}),
+    ...(errorMessage ? { "Error Message": errorMessage } : {}),
+    ...(timestamp ? { "Timestamp": timestamp } : {}),
+    ...(rawPayload
+      ? { "Raw Payload": JSON.stringify(rawPayload).slice(0, 50000) }
+      : {})
+  };
+  if (Object.keys(fields).length === 0) {
+    throw new Error("No fields to log in logWorkflowError");
+  }
+  return createRecord(baseKey, tableName, fields);
+}
 
+async function getEditorialBriefQueue() {
+  const base = "contentHub";
+  const table = "Content Production";
+  const filterFormula = `{Status} = "Outline Ready"`;
+  return getReadyImageRecords(base, table, {
+    filterFormula,
+    maxRecords: 1
+  });
+}
+async function saveEditorialBrief(id, payload = {}) {
+  if (!id) {
+    throw new Error("Missing record id");
+  }
+  const {
+    editorialBrief,
+    status = "Ready for Draft"
+  } = payload;
+
+  if (!editorialBrief) {
+    throw new Error("Missing editorialBrief");
+  }
+  const fields = {
+    "Editorial Brief": editorialBrief,
+    "Status": status
+  };
+  return updateRecord(
+    "contentHub",
+    "Content Production",
+    id,
+    fields
+  );
+}
+/* Pull records ready for draft and pass to designated agent */
+async function getDraftQueue() {
+  const base = "contentHub";
+  const table = "Content Production";
+  const filterFormula = `{Status} = "Ready for Draft"`;
+
+  return getReadyImageRecords(base, table, {
+    filterFormula,
+    maxRecords: 1
+  });
+}
+
+async function saveDraftResult(id, payload = {}) {
+  if (!id) {
+    throw new Error("Missing record id");
+  }
+  const {
+    draftContent,
+    excerpt,
+    metaDescription,
+    aeoDescription,
+    status = "Draft Ready"
+  } = payload;
+
+  if (!draftContent) {
+    throw new Error("Missing draftContent");
+  }
+  const fields = {
+    "Draft Content": draftContent,
+    ...(excerpt ? { "Excerpt": excerpt } : {}),
+    ...(metaDescription ? { "Meta Description": metaDescription } : {}),
+    ...(aeoDescription ? { "AEO Description": aeoDescription } : {}),
+    "Status": status
+  };
+  return updateRecord(
+    "contentHub",
+    "Content Production",
+    id,
+    fields
+  );
+}
 /* -------------------------------------------------------
    IMAGE WORKFLOW HELPERS
 ------------------------------------------------------- */
@@ -202,35 +348,29 @@ async function listByView(baseKey, tableName, viewName, filterFormula) {
 async function getReadyImageRecords(baseKey, tableName, options = {}) {
   const { view, filterFormula, maxRecords } = options;
   const baseId = await validateBaseAndTable(baseKey, tableName);
-
   const params = new URLSearchParams();
   if (view) params.set("view", view);
   if (filterFormula) params.set("filterByFormula", filterFormula);
   if (maxRecords) params.set("maxRecords", String(maxRecords));
-
   const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?${params.toString()}`;
   return fetchJson(url);
 }
 async function getImageQueue() {
   const base = "contentHub";
   const table = "Content Production";
-
   const filterFormula = `OR(
     {Workflow Stage} = "Image needed",
     {Workflow Stage} = "Image regenerate"
   )`;
 async function getImageContext(id) {
-
   if (!id) {
     throw new Error("Missing record id");
   }
-
   return getRecord(
     "contentHub",
     "Content Production",
     id
   );
-
 }
   return getReadyImageRecords(base, table, {
     filterFormula,
@@ -255,7 +395,6 @@ async function updateImageStatus(baseKey, tableName, id, fields) {
   }
   return updateRecord(baseKey, tableName, id, fields);
 }
-
 /**
  * Save generated image file metadata on a record.
  * Body:
@@ -285,13 +424,11 @@ async function saveImageFileId(baseKey, tableName, payload) {
   if (!fileIdField || !fileId) {
     throw new Error("Missing 'fileIdField' or 'fileId' in body for saveImageFileId");
   }
-
   const fields = {
     [fileIdField]: fileId,
     ...(fileUrlField && fileUrl ? { [fileUrlField]: fileUrl } : {}),
     ...(extraFields && typeof extraFields === "object" ? extraFields : {})
   };
-
   return updateRecord(baseKey, tableName, id, fields);
 }
 
@@ -323,9 +460,7 @@ async function saveWpPublishResults(baseKey, tableName, payload) {
     wpPostId,
     extraFields = {}
   } = payload || {};
-
   if (!id) throw new Error("Missing 'id' in body for saveWpPublishResults");
-
   const fields = {
     ...(wpMediaIdField && wpMediaId !== undefined
       ? { [wpMediaIdField]: wpMediaId }
@@ -338,64 +473,13 @@ async function saveWpPublishResults(baseKey, tableName, payload) {
       : {}),
     ...(extraFields && typeof extraFields === "object" ? extraFields : {})
   };
-
   if (Object.keys(fields).length === 0) {
     throw new Error("No fields to update in saveWpPublishResults");
   }
-
   return updateRecord(baseKey, tableName, id, fields);
 }
 
-/**
- * Log workflow errors into a dedicated table.
- * Query:
- *   base, table (this table is your error log table)
- * Body:
- *   {
- *     "workflowName": "Image Generation",
- *     "recordId": "recXXXX",
- *     "errorMessage": "Something failed",
- *     "payload": {...},
- *     "timestamp": "2026-06-05T20:30:00Z"
- *   }
- */
-async function logWorkflowError(baseKey, tableName, payload) {
-  const {
-    workflowName,
-    recordId,
-    errorMessage,
-    payload: rawPayload,
-    timestamp
-  } = payload || {};
 
-  const fields = {
-    ...(workflowName ? { "Workflow Name": workflowName } : {}),
-    ...(recordId ? { "Record ID": recordId } : {}),
-    ...(errorMessage ? { "Error Message": errorMessage } : {}),
-    ...(timestamp ? { "Timestamp": timestamp } : {}),
-    ...(rawPayload
-      ? { "Raw Payload": JSON.stringify(rawPayload).slice(0, 50000) }
-      : {})
-  };
-
-  if (Object.keys(fields).length === 0) {
-    throw new Error("No fields to log in logWorkflowError");
-  }
-
-  return createRecord(baseKey, tableName, fields);
-}
-/* Call for outline generation agent */
-async function getOutlineQueue() {
-  const base = "contentHub";
-  const table = "Content Production";
-
-  const filterFormula = `{Status} = "Ready for Outline"`;
-
-  return getReadyImageRecords(base, table, {
-    filterFormula,
-    maxRecords: 1
-  });
-}
 
 /* -------------------------------------------------------
    SERVER + ROUTES
@@ -452,7 +536,17 @@ const server = http.createServer(async (req, res) => {
       const data = await updateRecord(base, table, id, body.fields || {});
       return send(200, data);
     }
-
+// PATCH /save_outline_result
+if (path === "/save_outline_result" && req.method === "PATCH") {
+  const body = await parseBody(req);
+  const { id, ...payload } = body || {};
+  const data = await saveOutlineResult(id, payload);
+  return send(200, {
+    ok: true,
+    action: "save_outline_result",
+    record: data
+  });
+}
     // DELETE /delete?base=&table=&id=
     if (path === "/delete" && req.method === "DELETE") {
       const base = urlObj.searchParams.get("base");
@@ -483,13 +577,10 @@ const server = http.createServer(async (req, res) => {
         const table = urlObj.searchParams.get("table");
         const view = urlObj.searchParams.get("name");
         const filter = urlObj.searchParams.get("filter"); // optional
-
         if (!view) {
           return send(400, { ok: false, error: "Missing 'name' (view) query parameter" });
         }
-
         const data = await listByView(base, table, view, filter);
-
         return send(200, {
           ok: true,
           base,
@@ -508,7 +599,6 @@ const server = http.createServer(async (req, res) => {
 // GET /get_outline_queue
 if (path === "/get_outline_queue" && req.method === "GET") {
   const data = await getOutlineQueue();
-
   return send(200, {
     ok: true,
     queue: "outline",
@@ -518,14 +608,12 @@ if (path === "/get_outline_queue" && req.method === "GET") {
     // GET /schema?base=...
     if (path === "/schema" && req.method === "GET") {
       const base = urlObj.searchParams.get("base");
-
       if (base) {
         await ensureSchemaLoaded(base);
         const cache = SCHEMA_CACHE[base];
         if (!cache) throw new Error(`Schema not available for base: ${base}`);
         return send(200, { base, schema: cache.raw });
       }
-
       const result = {};
       for (const key of Object.keys(BASES)) {
         await ensureSchemaLoaded(key);
@@ -533,7 +621,40 @@ if (path === "/get_outline_queue" && req.method === "GET") {
       }
       return send(200, result);
     }
+// GET /get_editorial_brief_queue
+if (path === "/get_editorial_brief_queue" && req.method === "GET") {
+  const data = await getEditorialBriefQueue();
 
+  return send(200, {
+    ok: true,
+    queue: "editorial_brief",
+    records: data.records || []
+  });
+}
+
+    // PATCH /save_editorial_brief
+if (path === "/save_editorial_brief" && req.method === "PATCH") {
+  const body = await parseBody(req);
+  const { id, ...payload } = body || {};
+  const data = await saveEditorialBrief(id, payload);
+  return send(200, {
+    ok: true,
+    action: "save_editorial_brief",
+    record: data
+  });
+}
+
+// GET /get_draft_queue
+if (path === "/get_draft_queue" && req.method === "GET") {
+  const data = await getDraftQueue();
+
+  return send(200, {
+    ok: true,
+    queue: "draft",
+    records: data.records || []
+  });
+}
+    
     /* ---------------------------------------------------
        IMAGE WORKFLOW ROUTES (MCP-FRIENDLY)
     --------------------------------------------------- */
