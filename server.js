@@ -277,16 +277,22 @@ async function saveEditorialBrief(id, payload = {}) {
   }
   const {
     editorialBrief,
-    status = "Ready for Draft"
+    status = "Ready for Draft",
+    lastAgentWorkflow = "Editorial Brief Writer",
+    lastAgentTimestamp = new Date().toISOString()
   } = payload;
 
   if (!editorialBrief) {
     throw new Error("Missing editorialBrief");
   }
+
   const fields = {
     "Editorial Brief": editorialBrief,
-    "Status": status
+    "Status": status,
+    "Last Agent Workflow": lastAgentWorkflow,
+    "Last Agent Timestamp": lastAgentTimestamp
   };
+
   return updateRecord(
     "contentHub",
     "Content Production",
