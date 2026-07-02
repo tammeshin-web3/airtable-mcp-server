@@ -199,19 +199,26 @@ async function saveOutlineResult(id, payload = {}) {
   if (!id) {
     throw new Error("Missing record id");
   }
-  const {
-    outline,
+ const {
+    outlineReadable,
     contentGoal,
-    status = "Outline Ready"
+    status = "Outline Ready",
+    lastAgentWorkflow = "Outline Writer",
+    lastAgentTimestamp = new Date().toISOString()
   } = payload;
-  if (!outline) {
-    throw new Error("Missing outline");
+
+  if (!outlineReadable) {
+    throw new Error("Missing outlineReadable");
   }
+
   const fields = {
-    "AI Outline": outline,
+    "Outline Readable": outlineReadable,
     ...(contentGoal ? { "Content Goal": contentGoal } : {}),
-    "Status": status
+    "Status": status,
+    "Last Agent Workflow": lastAgentWorkflow,
+    "Last Agent Timestamp": lastAgentTimestamp
   };
+
   return updateRecord(
     "contentHub",
     "Content Production",
