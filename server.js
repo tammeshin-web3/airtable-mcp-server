@@ -195,36 +195,84 @@ async function getOutlineQueue() {
   });
 }
 /* Save outlne results to record for Editorial Brief agent */
-async function saveOutlineResult(id, payload = {}) {
-  if (!id) {
-    throw new Error("Missing record id");
+/* Save outline results to record and return context for Editorial Brief agent */
+async function saveOutlineResult(id, outline = {}) {
+  if (!id || typeof id !== "string") {
+    throw new Error("save_outline: missing or invalid record id");
   }
- const {
-    outlineReadable,
-    contentGoal,
-    status = "Outline Ready",
-    lastAgentWorkflow = "Outline Writer",
-    lastAgentTimestamp = new Date().toISOString()
-  } = payload;
 
-  if (!outlineReadable) {
-    throw new Error("Missing outlineReadable");
+  if (!outline || typeof outline !== "object" || Array.isArray(outline)) {
+    throw new Error("save_outline: missing or invalid outline object");
   }
+
+  const {
+    outline_markdown,
+    outline_json,
+    content_goal
+  } = outline;
+
+  if (
+    typeof outline_markdown !== "string" ||
+    !outline_markdown.trim()
+  ) {
+    throw new Error(
+      "save_outline: outline_markdown is missing or empty"
+    );
+  }
+
+  if (
+    !Array.isArray(outline_json) ||
+    outline_json.length === 0
+  ) {
+    throw new Error(
+      "save_outline: outline_json must be a non-empty array"
+    );
+  }
+
+  if (
+    typeof content_goal !== "string" ||
+    !content_goal.trim()
+  ) {
+    throw new Error(
+      "save_outline: content_goal is missing or empty"
+    );
+  }
+
+  const status = "Outline Ready";
+  const lastAgentWorkflow = "Outline Writer";
+  const lastAgentTimestamp = new Date().toISOString();
 
   const fields = {
-    "Outline Readable": outlineReadable,
-    ...(contentGoal ? { "Content Goal": contentGoal } : {}),
+    "Outline (Readable)": outline_markdown,
+    "Content Goal": content_goal,
     "Status": status,
     "Last Agent Workflow": lastAgentWorkflow,
     "Last Agent Timestamp": lastAgentTimestamp
   };
 
-  return updateRecord(
+  const updatedRecord = await updateRecord(
     "contentHub",
     "Content Production",
     id,
     fields
   );
+
+  return {
+    success: true,
+    record_id: id,
+    status,
+    last_agent_workflow: lastAgentWorkflow,
+    last_agent_timestamp: lastAgentTimestamp,
+
+    /* Immediate handoff to Editorial Brief agent */
+    outline: {
+      content_goal,
+      outline_json,
+      outline_markdown
+    },
+
+    updated_record: updatedRecord
+  };
 }
 /**
  * Log workflow errors into a dedicated table.
