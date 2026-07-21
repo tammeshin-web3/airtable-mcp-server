@@ -600,6 +600,12 @@ const server = http.createServer(async (req, res) => {
 // PATCH /save_outline_result
 if (path === "/save_outline_result" && req.method === "PATCH") {
   const body = await parseBody(req);
+  console.log("save_outline body:");
+console.dir(body, { depth: null });
+
+console.log("content_goal:");
+console.log(body.outline?.content_goal);
+console.log(typeof body.outline?.content_goal);
   const { record_id, outline } = body || {};
 
   const data = await saveOutlineResult(
