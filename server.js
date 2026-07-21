@@ -325,34 +325,54 @@ async function getEditorialBriefQueue() {
     maxRecords: 1
   });
 }
-async function saveEditorialBrief(id, payload = {}) {
-  if (!id) {
-    throw new Error("Missing record id");
+async function saveEditorialBrief(id, editorialBrief) {
+  if (!id || typeof id !== "string") {
+    throw new Error(
+      "save_editorial_brief: missing or invalid record id"
+    );
   }
-  const {
-    editorialBrief,
-    status = "Ready for Draft",
-    lastAgentWorkflow = "Editorial Brief Writer",
-    lastAgentTimestamp = new Date().toISOString()
-  } = payload;
 
-  if (!editorialBrief) {
-    throw new Error("Missing editorialBrief");
+  if (typeof editorialBrief !== "string") {
+    throw new Error(
+      "save_editorial_brief: editorial brief must be a string"
+    );
   }
+
+  const normalizedEditorialBrief = editorialBrief.trim();
+
+  if (!normalizedEditorialBrief) {
+    throw new Error(
+      "save_editorial_brief: editorial brief is empty"
+    );
+  }
+
+  const status = "Ready for Draft";
+  const lastAgentWorkflow = "Editorial Brief Writer";
+  const lastAgentTimestamp = new Date().toISOString();
 
   const fields = {
-    "Editorial Brief": editorialBrief,
+    "Editorial Brief": normalizedEditorialBrief,
     "Status": status,
     "Last Agent Workflow": lastAgentWorkflow,
     "Last Agent Timestamp": lastAgentTimestamp
   };
 
-  return updateRecord(
+  const updatedRecord = await updateRecord(
     "contentHub",
     "Content Production",
     id,
     fields
   );
+
+  return {
+    success: true,
+    record_id: id,
+    status,
+    last_agent_workflow: lastAgentWorkflow,
+    last_agent_timestamp: lastAgentTimestamp,
+    editorial_brief: normalizedEditorialBrief,
+    updated_record: updatedRecord
+  };
 }
 /* Pull records ready for draft and pass to designated agent */
 async function getDraftQueue() {
@@ -710,11 +730,20 @@ if (path === "/get_editorial_brief_queue" && req.method === "GET") {
   });
 }
 
-    // PATCH /save_editorial_brief
+// PATCH /save_editorial_brief
 if (path === "/save_editorial_brief" && req.method === "PATCH") {
   const body = await parseBody(req);
-  const { id, ...payload } = body || {};
-  const data = await saveEditorialBrief(id, payload);
+
+  const {
+    record_id,
+    editorial_brief
+  } = body || {};
+
+  const data = await saveEditorialBrief(
+    record_id,
+    editorial_brief
+  );
+
   return send(200, {
     ok: true,
     action: "save_editorial_brief",
