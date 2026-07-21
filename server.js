@@ -211,6 +211,12 @@ async function saveOutlineResult(id, outline = {}) {
     content_goal
   } = outline;
 
+  const normalizedContentGoal =
+    typeof content_goal === "string"
+      ? content_goal.trim().charAt(0).toUpperCase() +
+        content_goal.trim().slice(1).toLowerCase()
+      : content_goal;
+
   if (
     typeof outline_markdown !== "string" ||
     !outline_markdown.trim()
@@ -230,8 +236,8 @@ async function saveOutlineResult(id, outline = {}) {
   }
 
   if (
-    typeof content_goal !== "string" ||
-    !content_goal.trim()
+    typeof normalizedContentGoal !== "string" ||
+    !normalizedContentGoal
   ) {
     throw new Error(
       "save_outline: content_goal is missing or empty"
@@ -244,7 +250,7 @@ async function saveOutlineResult(id, outline = {}) {
 
   const fields = {
     "Outline (Readable)": outline_markdown,
-    "Content Goal": content_goal,
+    "Content Goal": normalizedContentGoal,
     "Status": status,
     "Last Agent Workflow": lastAgentWorkflow,
     "Last Agent Timestamp": lastAgentTimestamp
@@ -266,7 +272,7 @@ async function saveOutlineResult(id, outline = {}) {
 
     /* Immediate handoff to Editorial Brief agent */
     outline: {
-      content_goal,
+      content_goal: normalizedContentGoal,
       outline_json,
       outline_markdown
     },
