@@ -600,8 +600,13 @@ const server = http.createServer(async (req, res) => {
 // PATCH /save_outline_result
 if (path === "/save_outline_result" && req.method === "PATCH") {
   const body = await parseBody(req);
-  const { id, ...payload } = body || {};
-  const data = await saveOutlineResult(id, payload);
+  const { record_id, outline } = body || {};
+
+  const data = await saveOutlineResult(
+    record_id,
+    outline
+  );
+
   return send(200, {
     ok: true,
     action: "save_outline_result",
