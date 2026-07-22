@@ -188,10 +188,10 @@ async function listByView(baseKey, tableName, viewName, filterFormula) {
 async function getOutlineQueue() {
   const base = "contentHub";
   const table = "Content Production";
-  const filterFormula = `{Status} = "Ready for Outline"`;
+
   return getReadyImageRecords(base, table, {
-    filterFormula,
-    maxRecords: 10
+    view: "Ready for Outline",
+    maxRecords: 8
   });
 }
 /* Save outlne results to record for Editorial Brief agent */
