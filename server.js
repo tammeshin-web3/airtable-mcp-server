@@ -191,7 +191,7 @@ async function getOutlineQueue() {
   const filterFormula = `{Status} = "Ready for Outline"`;
   return getReadyImageRecords(base, table, {
     filterFormula,
-    maxRecords: 1
+    maxRecords: 10
   });
 }
 /* Save outlne results to record for Editorial Brief agent */
