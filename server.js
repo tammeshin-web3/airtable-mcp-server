@@ -703,7 +703,6 @@ if (path === "/get_outline_queue" && req.method === "GET") {
     records: data.records || []
   });
 }
-}
 
     // GET /schema?base=...
     if (path === "/schema" && req.method === "GET") {
