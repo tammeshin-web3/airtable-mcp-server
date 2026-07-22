@@ -695,14 +695,17 @@ console.log(typeof body.outline?.content_goal);
       }
     }
 // GET /get_outline_queue
-if (path === "/get_outline_queue" && req.method === "GET") {
-  const data = await getOutlineQueue();
-  return send(200, {
-    ok: true,
-    queue: "outline",
-    records: data.records || []
+/* Call for outline generation agent */
+async function getOutlineQueue() {
+  const base = "contentHub";
+  const table = "Content Production";
+
+  return getReadyImageRecords(base, table, {
+    view: "Ready for Outline",
+    maxRecords: 8
   });
 }
+
     // GET /schema?base=...
     if (path === "/schema" && req.method === "GET") {
       const base = urlObj.searchParams.get("base");
