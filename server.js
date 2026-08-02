@@ -381,39 +381,87 @@ async function getDraftQueue() {
   const filterFormula = `{Status} = "Ready for Draft"`;
 
   return getReadyImageRecords(base, table, {
-    filterFormula,
-    maxRecords: 1
+    view: "QUEUE-Ready for Draft",
+    maxRecords: 9
   });
 }
 
 async function saveDraftResult(id, payload = {}) {
-  if (!id) {
-    throw new Error("Missing record id");
+  if (!id || typeof id !== "string") {
+    throw new Error("save_draft: missing or invalid record id");
   }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("save_draft: missing or invalid draft payload");
+  }
+
   const {
-    draftContent,
-    excerpt,
-    metaDescription,
-    aeoDescription,
-    status = "Draft Ready"
+    draft_markdown,
+    meta_description,
+    aeo_description
   } = payload;
 
-  if (!draftContent) {
-    throw new Error("Missing draftContent");
+  if (typeof draft_markdown !== "string") {
+    throw new Error("save_draft: draft_markdown must be a string");
   }
+
+  if (!draft_markdown.trim()) {
+    throw new Error("save_draft: draft_markdown is empty");
+  }
+
+  if (typeof meta_description !== "string") {
+    throw new Error("save_draft: meta_description must be a string");
+  }
+
+  if (!meta_description.trim()) {
+    throw new Error("save_draft: meta_description is empty");
+  }
+
+  if (typeof aeo_description !== "string") {
+    throw new Error("save_draft: aeo_description must be a string");
+  }
+
+  if (!aeo_description.trim()) {
+    throw new Error("save_draft: aeo_description is empty");
+  }
+
+  const normalizedDraft = draft_markdown.trim();
+  const normalizedMetaDescription = meta_description.trim();
+  const normalizedAeoDescription = aeo_description.trim();
+
+  const status = "Needs Human Review";
+  const imageWorkflowStage = "Image Needed";
+  const lastAgentWorkflow = "Draft Writer";
+  const lastAgentTimestamp = new Date().toISOString();
+
   const fields = {
-    "Draft Content": draftContent,
-    ...(excerpt ? { "Excerpt": excerpt } : {}),
-    ...(metaDescription ? { "Meta Description": metaDescription } : {}),
-    ...(aeoDescription ? { "AEO Description": aeoDescription } : {}),
-    "Status": status
+    "Draft Content": normalizedDraft,
+    "Meta Description": normalizedMetaDescription,
+    "AEO Description": normalizedAeoDescription,
+    "Status": status,
+    "Image Workflow Stage": imageWorkflowStage,
+    "Last Agent Workflow": lastAgentWorkflow,
+    "Last Agent Timestamp": lastAgentTimestamp
   };
-  return updateRecord(
+
+  const updatedRecord = await updateRecord(
     "contentHub",
     "Content Production",
     id,
     fields
   );
+
+  return {
+    success: true,
+    record_id: id,
+    topic: updatedRecord?.fields?.Topic || "",
+    status,
+    image_workflow_stage: imageWorkflowStage,
+    draft_saved: true,
+    meta_description_saved: true,
+    aeo_description_saved: true,
+    updated_record: updatedRecord
+  };
 }
 /* -------------------------------------------------------
    IMAGE WORKFLOW HELPERS
