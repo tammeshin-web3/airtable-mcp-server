@@ -810,22 +810,29 @@ if (path === "/get_draft_queue" && req.method === "GET") {
     records: data.records || []
   });
 }
-  // PATCH /save_draft_result (or /save_draft)
-if ((path === "/save_draft_result" || path === "/save_draft") && (req.method === "PATCH" || req.method === "POST")) {
+  // PATCH /save_draft
+if (path === "/save_draft" && req.method === "PATCH") {
   const body = await parseBody(req);
 
-  // Fallback to extract ID whether passed as 'record_id' or 'id'
-  const recordId = body.record_id || body.id;
-  const payload = body.payload || {};
+  const {
+    record_id,
+    draft_markdown,
+    meta_description,
+    aeo_description
+  } = body || {};
 
-  const data = await saveDraftResult(recordId, payload);
+  const data = await saveDraftResult(record_id, {
+    draft_markdown,
+    meta_description,
+    aeo_description
+  });
 
   return send(200, {
     ok: true,
-    action: "save_draft_result",
+    action: "save_draft",
     record: data
   });
-}  
+}
     /* ---------------------------------------------------
        IMAGE WORKFLOW ROUTES (MCP-FRIENDLY)
     --------------------------------------------------- */
