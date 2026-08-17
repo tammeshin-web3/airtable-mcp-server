@@ -514,19 +514,29 @@ async function getReadyImageRecords(baseKey, tableName, options = {}) {
 async function getImageQueue() {
   const base = "contentHub";
   const table = "Content Production";
+
   const filterFormula = `OR(
-    {Workflow Stage} = "Image needed",
-    {Workflow Stage} = "Image regenerate"
+    {Image Workflow Stage} = "Image needed",
+    {Image Workflow Stage} = "Image regenerate"
   )`;
+
+  return getReadyImageRecords(base, table, {
+    filterFormula,
+    maxRecords: 9
+  });
+}
+
 async function getImageContext(id) {
-  if (!id) {
-    throw new Error("Missing record id");
+  if (!id || typeof id !== "string") {
+    throw new Error("get_image_context: missing or invalid record id");
   }
+
   return getRecord(
     "contentHub",
     "Content Production",
     id
   );
+}
 }
   return getReadyImageRecords(base, table, {
     filterFormula,
