@@ -449,7 +449,7 @@ const preserveApprovedImage =
   
   const status = "Needs Human Review";
   const imageWorkflowStage = preserveApprovedImage
-  ? "Image Approved"
+  ? "Image approved"
   : "Image needed";
   const lastAgentWorkflow = "Draft Writer";
   const lastAgentTimestamp = new Date().toISOString();
@@ -477,6 +477,7 @@ const preserveApprovedImage =
     topic: updatedRecord?.fields?.Topic || "",
     status,
     image_workflow_stage: imageWorkflowStage,
+    approved_image_preserved: preserveApprovedImage,
     draft_saved: true,
     meta_description_saved: true,
     aeo_description_saved: true,
