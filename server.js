@@ -537,7 +537,7 @@ async function getImageContext(id) {
     id
   );
 }
-}
+
   return getReadyImageRecords(base, table, {
     filterFormula,
     maxRecords: 1
