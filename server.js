@@ -429,8 +429,28 @@ async function saveDraftResult(id, payload = {}) {
   const normalizedMetaDescription = meta_description.trim();
   const normalizedAeoDescription = aeo_description.trim();
 
+  const existingRecord = await getRecord(
+  "contentHub",
+  "Content Production",
+  id
+);
+
+const existingFields = existingRecord?.fields || {};
+
+const featuredImages = existingFields["Featured Image"];
+const hasFeaturedImage =
+  Array.isArray(featuredImages) && featuredImages.length > 0;
+
+const hasApprovedImage =
+  existingFields["Image Workflow Stage"] === "Image approved";
+
+const preserveApprovedImage =
+  hasFeaturedImage && hasApprovedImage;
+  
   const status = "Needs Human Review";
-  const imageWorkflowStage = "Image needed";
+  const imageWorkflowStage = preserveApprovedImage
+  ? "Image Approved"
+  : "Image needed";
   const lastAgentWorkflow = "Draft Writer";
   const lastAgentTimestamp = new Date().toISOString();
 
