@@ -430,7 +430,7 @@ async function saveDraftResult(id, payload = {}) {
   const normalizedAeoDescription = aeo_description.trim();
 
   const status = "Needs Human Review";
-  const imageWorkflowStage = "Image Needed";
+  const imageWorkflowStage = "Image needed";
   const lastAgentWorkflow = "Draft Writer";
   const lastAgentTimestamp = new Date().toISOString();
 
