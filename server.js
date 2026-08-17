@@ -538,11 +538,6 @@ async function getImageContext(id) {
   );
 }
 
-  return getReadyImageRecords(base, table, {
-    filterFormula,
-    maxRecords: 1
-  });
-}
 /**
  * Update image-related status fields in a single record.
  * Body:
