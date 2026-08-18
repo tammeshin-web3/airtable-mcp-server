@@ -514,6 +514,7 @@ async function getReadyImageRecords(baseKey, tableName, options = {}) {
 async function getImageQueue() {
   const base = "contentHub";
   const table = "Content Production";
+  const view = "QUEUE - Awaiting Human Review";
 
   const filterFormula = `OR(
     {Image Workflow Stage} = "Image needed",
@@ -521,6 +522,7 @@ async function getImageQueue() {
   )`;
 
   return getReadyImageRecords(base, table, {
+    view,
     filterFormula,
     maxRecords: 9
   });
