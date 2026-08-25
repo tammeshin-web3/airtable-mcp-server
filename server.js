@@ -573,27 +573,104 @@ async function updateImageStatus(baseKey, tableName, id, fields) {
  *     }
  *   }
  */
-async function saveImageFileId(baseKey, tableName, payload) {
-  const {
-    id,
-    fileIdField,
-    fileId,
-    fileUrlField,
-    fileUrl,
-    extraFields = {}
-  } = payload || {};
 
-  if (!id) throw new Error("Missing 'id' in body for saveImageFileId");
-  if (!fileIdField || !fileId) {
-    throw new Error("Missing 'fileIdField' or 'fileId' in body for saveImageFileId");
+async function saveImageResult(recordId, payload = {}) {
+  if (!recordId || typeof recordId !== "string") {
+    throw new Error("save_image_result: missing or invalid record_id");
   }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("save_image_result: missing or invalid image payload");
+  }
+
+  const { image_file_id, image_filename, force = false } = payload;
+
+  if (typeof image_file_id !== "string" || !image_file_id.trim()) {
+    throw new Error("save_image_result: image_file_id must be a non-empty string");
+  }
+
+  if (typeof image_filename !== "string" || !image_filename.trim()) {
+    throw new Error("save_image_result: image_filename must be a non-empty string");
+  }
+
+  const normalizedFileId = image_file_id.trim();
+  const normalizedFilename = image_filename.trim();
+
+  // ---------------------------------------------------------
+  // 1. Fetch existing record
+  // ---------------------------------------------------------
+  let existingRecord;
+  try {
+    existingRecord = await getRecord("contentHub", "Content Production", recordId);
+  } catch (err) {
+    throw new Error(`save_image_result: failed to fetch existing record: ${err.message}`);
+  }
+
+  const existingFileId = existingRecord?.fields?.["Image File ID"];
+  const existingFilename = existingRecord?.fields?.["Image Filename"];
+  const workflowStage = existingRecord?.fields?.["Image Workflow Stage"];
+
+  // ---------------------------------------------------------
+  // 2. Overwrite protection
+  // Allowed if:
+  // - force=true
+  // - OR workflow stage is "Image regenerate"
+  // ---------------------------------------------------------
+  const overwriteAllowed = force || workflowStage === "Image regenerate";
+
+  if (!overwriteAllowed && (existingFileId || existingFilename)) {
+    throw new Error(
+      "save_image_result: record already contains an image; overwrite only allowed when workflow stage is 'Image regenerate' or force=true"
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 3. Prepare fields for update
+  // ---------------------------------------------------------
+  const imageWorkflowStage = "Image pending review";
+  const lastAgentWorkflow = "Image Generation";
+  const lastAgentTimestamp = new Date().toISOString();
+
   const fields = {
-    [fileIdField]: fileId,
-    ...(fileUrlField && fileUrl ? { [fileUrlField]: fileUrl } : {}),
-    ...(extraFields && typeof extraFields === "object" ? extraFields : {})
+    "Image File ID": normalizedFileId,
+    "Image Filename": normalizedFilename,
+    "Image Workflow Stage": imageWorkflowStage,
+    "Image Status": "Generated",
+    "Last Agent Workflow": lastAgentWorkflow,
+    "Last Agent Timestamp": lastAgentTimestamp
   };
-  return updateRecord(baseKey, tableName, id, fields);
+
+  // ---------------------------------------------------------
+  // 4. Update Airtable
+  // ---------------------------------------------------------
+  let updatedRecord;
+  try {
+    updatedRecord = await updateRecord(
+      "contentHub",
+      "Content Production",
+      recordId,
+      fields
+    );
+  } catch (err) {
+    throw new Error(`save_image_result: failed to update Airtable: ${err.message}`);
+  }
+
+  // ---------------------------------------------------------
+  // 5. Return structured response
+  // ---------------------------------------------------------
+  return {
+    success: true,
+    record_id: recordId,
+    image_file_id: normalizedFileId,
+    image_filename: normalizedFilename,
+    image_workflow_stage: imageWorkflowStage,
+    image_status: "Generated",
+    last_agent_workflow: lastAgentWorkflow,
+    last_agent_timestamp: lastAgentTimestamp,
+    updated_record: updatedRecord
+  };
 }
+
 
 /**
  * Save WordPress publish results on a record.
@@ -926,22 +1003,30 @@ if (path === "/get_image_context" && req.method === "GET") {
       });
     }
 
-    // POST /save_image_file_id?base=&table=
-    // Body: see saveImageFileId helper
-    if (path === "/save_image_file_id" && req.method === "POST") {
-      const base = urlObj.searchParams.get("base");
-      const table = urlObj.searchParams.get("table");
-      const body = await parseBody(req);
+  // Save Images to database    
+    if (path === "/save_image_result" && req.method === "PATCH") {
+  const body = await parseBody(req);
 
-      const data = await saveImageFileId(base, table, body);
+  const {
+    record_id,
+    image_file_id,
+    image_filename,
+    force = false
+  } = body || {};
 
-      return send(200, {
-        ok: true,
-        base,
-        table,
-        record: data
-      });
-    }
+  const data = await saveImageResult(record_id, {
+    image_file_id,
+    image_filename,
+    force
+  });
+
+  return send(200, {
+    ok: true,
+    action: "save_image_result",
+    record: data
+  });
+}
+
 
     // POST /save_wp_publish_results?base=&table=
     // Body: see saveWpPublishResults helper
