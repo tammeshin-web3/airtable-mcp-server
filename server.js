@@ -691,8 +691,8 @@ const imageDownloadUrl =
     "Image Filename": normalizedFilename,
     "Image URL": imageViewUrl,
     "Featured Image": [
-      ( url: imageDownloadUrl, 
-       filename: normalizedFilename)
+      {url: imageDownloadUrl, 
+       filename: normalizedFilename}
         ],
     "Image Workflow Stage": imageWorkflowStage,
     "Image Status": "Generated",
