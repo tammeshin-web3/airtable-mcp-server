@@ -646,7 +646,11 @@ async function saveImageResult(recordId, payload = {}) {
 
   const normalizedFileId = image_file_id.trim();
   const normalizedFilename = image_filename.trim();
+const imageViewUrl =
+  `https://drive.google.com/file/d/${encodeURIComponent(normalizedFileId)}/view`;
 
+const imageDownloadUrl =
+  `https://drive.google.com/uc?export=download&id=${encodeURIComponent(normalizedFileId)}`;
   // ---------------------------------------------------------
   // 1. Fetch existing record
   // ---------------------------------------------------------
@@ -685,6 +689,10 @@ async function saveImageResult(recordId, payload = {}) {
   const fields = {
     "Image File ID": normalizedFileId,
     "Image Filename": normalizedFilename,
+    "Image URL": imageViewUrl,
+    "Featured Image": [
+      ( url: imageDownloadUrl, filename:normalizedFilename)
+        ],
     "Image Workflow Stage": imageWorkflowStage,
     "Image Status": "Generated",
     "Last Agent Workflow": lastAgentWorkflow,
@@ -714,6 +722,11 @@ async function saveImageResult(recordId, payload = {}) {
     record_id: recordId,
     image_file_id: normalizedFileId,
     image_filename: normalizedFilename,
+    image_download_url: imageDownloadUrl,
+  featured_image: {
+    url: imageDownloadUrl,
+    filename: normalizedFilename
+  },
     image_workflow_stage: imageWorkflowStage,
     image_status: "Generated",
     last_agent_workflow: lastAgentWorkflow,
