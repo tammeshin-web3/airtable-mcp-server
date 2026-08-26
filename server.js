@@ -31,7 +31,41 @@ function parseBody(req) {
     });
   });
 }
+function normalizeObjectBody(value, routeName) {
+  let normalized = value;
 
+  if (typeof normalized === "string") {
+    try {
+      normalized = JSON.parse(normalized);
+    } catch {
+      throw new Error(
+        `${routeName}: request body was received as an invalid JSON string`
+      );
+    }
+  }
+
+  if (Array.isArray(normalized)) {
+    if (normalized.length !== 1) {
+      throw new Error(
+        `${routeName}: request body must contain exactly one record`
+      );
+    }
+
+    normalized = normalized[0];
+  }
+
+  if (
+    !normalized ||
+    typeof normalized !== "object" ||
+    Array.isArray(normalized)
+  ) {
+    throw new Error(
+      `${routeName}: request body must be a JSON object`
+    );
+  }
+
+  return normalized;
+}
 /* -------------------------------------------------------
    AIRTABLE HELPERS
 ------------------------------------------------------- */
@@ -539,7 +573,24 @@ async function getImageContext(id) {
     id
   );
 }
+/** Image Queue for when image prompt is complete and approved - ready to move in the workflow to next stage **/
+async function getImageGenerationQueue() {
+  const base = "contentHub";
+  const table = "Content Production";
 
+  const filterFormula = [
+    "AND(",
+    '{Image Workflow Stage} = "Prompt complete",',
+    "LEN({Image Generation Prompt}) > 0,",
+    "NOT({Image File ID})",
+    ")"
+  ].join("");
+
+  return getReadyImageRecords(base, table, {
+    filterFormula,
+    maxRecords: 2
+  });
+}
 /**
  * Update image-related status fields in a single record.
  * Body:
@@ -963,7 +1014,20 @@ if (path === "/get_image_context" && req.method === "GET") {
     context: data
   });
 
-}  
+} 
+    // GET /get_image-generation
+    if (
+  path === "/get_image_generation_queue" &&
+  req.method === "GET"
+) {
+  const data = await getImageGenerationQueue();
+
+  return send(200, {
+    ok: true,
+    queue: "image_generation",
+    records: data.records || []
+  });
+}
     // POST /get_ready_image_records?base=&table=
     // Body: { view?, filterFormula?, maxRecords? }
     if (path === "/get_ready_image_records" && req.method === "POST") {
@@ -1005,14 +1069,19 @@ if (path === "/get_image_context" && req.method === "GET") {
 
   // Save Images to database    
     if (path === "/save_image_result" && req.method === "PATCH") {
-  const body = await parseBody(req);
+ const parsedBody = await parseBody(req);
+
+const body = normalizeObjectBody(
+  parsedBody,
+  "save_image_result"
+);
 
   const {
     record_id,
     image_file_id,
     image_filename,
     force = false
-  } = body || {};
+  } = body;
 
   const data = await saveImageResult(record_id, {
     image_file_id,
