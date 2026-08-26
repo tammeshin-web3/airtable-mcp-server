@@ -689,7 +689,6 @@ const imageDownloadUrl =
   const fields = {
     "Image File ID": normalizedFileId,
     "Image Filename": normalizedFilename,
-    "Image URL": imageViewUrl,
     "Featured Image": [
       {url: imageDownloadUrl, 
        filename: normalizedFilename}
@@ -723,7 +722,6 @@ const imageDownloadUrl =
     record_id: recordId,
     image_file_id: normalizedFileId,
     image_filename: normalizedFilename,
-    image_download_url: imageDownloadUrl,
     featured_image: {
     url: imageDownloadUrl,
     filename: normalizedFilename
