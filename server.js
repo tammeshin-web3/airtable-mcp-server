@@ -8,7 +8,8 @@ const AIRTABLE_API_KEY = process.env.Airtable_API_KEY;
 const BASES = {
   contentHub: "appysRCPb7SIo65b4",          // Content Production Hub
   riseThrive: "app6BPzeM4pCySdxG",          // Rise & Thrive Membership
-  newsletterMaestro: "appBN5g462u16L5Uv"    // Newsletter Maestro
+  newsletterMaestro: "appBN5g462u16L5Uv",    // Newsletter Maestro
+  n8nWorkflowMonitor: "app1rRWcyXtLxSDSe"   // Workflow Monitoring on N8N
 };
 
 // In‑memory schema cache: { baseKey: { tables: Set<string>, raw: any } }
@@ -828,6 +829,40 @@ const server = http.createServer(async (req, res) => {
       const data = await createRecord(base, table, body.fields || {});
       return send(200, data);
     }
+// POST / Workflow Error logging
+    if (method === "POST" && url === "/save_error") {
+    try {
+        const {
+            workflow_id,
+            workflow_name,
+            execution_id,
+            error_message,
+            error_node,
+            timestamp
+        } = body;
+
+        const baseId = BASES.errorLogs;   // your new base key
+        const tableName = "Errors";
+
+        const result = await airtableClient(baseId, tableName).create({
+            workflow_id,
+            workflow_name,
+            execution_id,
+            error_message,
+            error_node,
+            timestamp
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok", record: result }));
+    } catch (err) {
+        console.error("Error saving error log:", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "error", message: err.message }));
+    }
+
+    return; // stop further routing
+}
 
     // PATCH /update?base=&table=&id=
     if (path === "/update" && req.method === "PATCH") {
