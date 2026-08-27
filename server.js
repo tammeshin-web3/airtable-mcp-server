@@ -315,42 +315,140 @@ async function saveOutlineResult(id, outline = {}) {
     updated_record: updatedRecord
   };
 }
+
 /**
- * Log workflow errors into a dedicated table.
- * Query:
- *   base, table (this table is your error log table)
- * Body:
- *   {
- *     "workflowName": "Image Generation",
- *     "recordId": "recXXXX",
- *     "errorMessage": "Something failed",
- *     "payload": {...},
- *     "timestamp": "2026-06-05T20:30:00Z"
- *   }
+ * Save an n8n workflow failure to Airtable.
+ *
+ * Required:
+ * - workflow_name
+ * - error_message
+ *
+ * Optional because trigger failures may not provide them:
+ * - workflow_id
+ * - execution_id
+ * - execution_url
+ * - error_node
+ * - error_stack
+ * - source_record_id
+ * - timestamp
  */
-async function logWorkflowError(baseKey, tableName, payload) {
-  const {
-    workflowName,
-    recordId,
-    errorMessage,
-    payload: rawPayload,
-    timestamp
-  } = payload || {};
-  const fields = {
-    ...(workflowName ? { "Workflow Name": workflowName } : {}),
-    ...(recordId ? { "Record ID": recordId } : {}),
-    ...(errorMessage ? { "Error Message": errorMessage } : {}),
-    ...(timestamp ? { "Timestamp": timestamp } : {}),
-    ...(rawPayload
-      ? { "Raw Payload": JSON.stringify(rawPayload).slice(0, 50000) }
-      : {})
-  };
-  if (Object.keys(fields).length === 0) {
-    throw new Error("No fields to log in logWorkflowError");
+async function saveWorkflowError(payload = {}) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("save_error: missing or invalid error payload");
   }
-  return createRecord(baseKey, tableName, fields);
+
+  const {
+    workflow_id,
+    workflow_name,
+    execution_id,
+    execution_url,
+    error_message,
+    error_node,
+    error_stack,
+    source_record_id,
+    timestamp
+  } = payload;
+
+  if (
+    typeof workflow_name !== "string" ||
+    !workflow_name.trim()
+  ) {
+    throw new Error("save_error: workflow_name is required");
+  }
+
+  if (
+    typeof error_message !== "string" ||
+    !error_message.trim()
+  ) {
+    throw new Error("save_error: error_message is required");
+  }
+
+  let normalizedTimestamp = new Date().toISOString();
+
+  if (timestamp) {
+    const suppliedTimestamp = new Date(timestamp);
+
+    if (!Number.isNaN(suppliedTimestamp.getTime())) {
+      normalizedTimestamp = suppliedTimestamp.toISOString();
+    }
+  }
+
+  const normalizedWorkflowName = workflow_name.trim();
+  const normalizedErrorMessage = error_message
+    .trim()
+    .slice(0, 10000);
+
+  const fields = {
+    ...(workflow_id
+      ? { "Workflow ID": String(workflow_id).trim() }
+      : {}),
+
+    "Workflow Name": normalizedWorkflowName,
+
+    ...(execution_id
+      ? { "Execution ID": String(execution_id).trim() }
+      : {}),
+
+    ...(execution_url
+      ? { "Execution URL": String(execution_url).trim() }
+      : {}),
+
+    "Error Message": normalizedErrorMessage,
+
+    ...(error_node
+      ? { "Error Node": String(error_node).trim() }
+      : {}),
+
+    ...(error_stack
+      ? {
+          "Error Stack": String(error_stack)
+            .trim()
+            .slice(0, 50000)
+        }
+      : {}),
+
+    ...(source_record_id
+      ? {
+          "Source Record ID": String(source_record_id).trim()
+        }
+      : {}),
+
+    "Timestamp": normalizedTimestamp,
+    "Status": "New"
+  };
+
+  const createdRecord = await createRecord(
+    "n8nWorkflowMonitor",
+    "Workflow Executions",
+    fields
+  );
+
+  return {
+    success: true,
+    airtable_record_id: createdRecord.id,
+    workflow_id: workflow_id
+      ? String(workflow_id).trim()
+      : null,
+    workflow_name: normalizedWorkflowName,
+    execution_id: execution_id
+      ? String(execution_id).trim()
+      : null,
+    execution_url: execution_url
+      ? String(execution_url).trim()
+      : null,
+    error_node: error_node
+      ? String(error_node).trim()
+      : null,
+    source_record_id: source_record_id
+      ? String(source_record_id).trim()
+      : null,
+    timestamp: normalizedTimestamp,
+    status: "New",
+    created_record: createdRecord
+  };
 }
 
+/** Call Editorial Brief **/
 async function getEditorialBriefQueue() {
   const base = "contentHub";
   const table = "Content Production";
@@ -829,39 +927,22 @@ const server = http.createServer(async (req, res) => {
       const data = await createRecord(base, table, body.fields || {});
       return send(200, data);
     }
-// POST / Workflow Error logging
-    if (method === "POST" && url === "/save_error") {
-    try {
-        const {
-            workflow_id,
-            workflow_name,
-            execution_id,
-            error_message,
-            error_node,
-            timestamp
-        } = body;
+// POST /save_error
+if (path === "/save_error" && req.method === "POST") {
+  const parsedBody = await parseBody(req);
 
-        const baseId = BASES.errorLogs;   // your new base key
-        const tableName = "Errors";
+  const body = normalizeObjectBody(
+    parsedBody,
+    "save_error"
+  );
 
-        const result = await airtableClient(baseId, tableName).create({
-            workflow_id,
-            workflow_name,
-            execution_id,
-            error_message,
-            error_node,
-            timestamp
-        });
+  const data = await saveWorkflowError(body);
 
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "ok", record: result }));
-    } catch (err) {
-        console.error("Error saving error log:", err);
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "error", message: err.message }));
-    }
-
-    return; // stop further routing
+  return send(201, {
+    ok: true,
+    action: "save_error",
+    record: data
+  });
 }
 
     // PATCH /update?base=&table=&id=
@@ -1152,23 +1233,6 @@ const body = normalizeObjectBody(
       const body = await parseBody(req);
 
       const data = await saveWpPublishResults(base, table, body);
-
-      return send(200, {
-        ok: true,
-        base,
-        table,
-        record: data
-      });
-    }
-
-    // POST /log_workflow_error?base=&table=
-    // Body: see logWorkflowError helper
-    if (path === "/log_workflow_error" && req.method === "POST") {
-      const base = urlObj.searchParams.get("base");
-      const table = urlObj.searchParams.get("table");
-      const body = await parseBody(req);
-
-      const data = await logWorkflowError(base, table, body);
 
       return send(200, {
         ok: true,
