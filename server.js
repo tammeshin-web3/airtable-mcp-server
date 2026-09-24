@@ -1,8 +1,22 @@
 import http from "http";
+import crypto from "crypto";
 import fetch from "node-fetch";
 
 const PORT = process.env.PORT || 8080;
 const AIRTABLE_API_KEY = process.env.Airtable_API_KEY;
+const SERVER_API_SECRET= process.env.SERVER_API_SECRET;
+
+if (!AIRTABLE_API_KEY) {
+  throw new Error(
+    "Missing required Airtable_API_KEY environment variable"
+  );
+}
+
+if (!SERVER_API_SECRET) {
+  throw new Error(
+    "Missing required SERVER_API_SECRET environment variable"
+  );
+}
 
 // Map of logical base keys → Airtable Base IDs
 const BASES = {
@@ -66,6 +80,42 @@ function normalizeObjectBody(value, routeName) {
   }
 
   return normalized;
+}
+
+* -------------------------------------------------------
+   SERVER AUTHENTICATION
+------------------------------------------------------- */
+
+function constantTimeEqual(providedValue, expectedValue) {
+  const provided = Buffer.from(
+    String(providedValue || ""),
+    "utf8"
+  );
+
+  const expected = Buffer.from(
+    String(expectedValue || ""),
+    "utf8"
+  );
+
+  if (provided.length !== expected.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(provided, expected);
+}
+
+function hasValidBearerToken(req) {
+  const authorization = req.headers.authorization || "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+
+  if (!match) {
+    return false;
+  }
+
+  return constantTimeEqual(
+    match[1].trim(),
+    SERVER_API_SECRET
+  );
 }
 /* -------------------------------------------------------
    AIRTABLE HELPERS
@@ -216,6 +266,148 @@ async function listByView(baseKey, tableName, viewName, filterFormula) {
 
   return fetchJson(url);
 }
+
+/* -------------------------------------------------------
+   NEWSLETTER ACTION RESOLVER
+------------------------------------------------------- */
+
+const NEWSLETTER_STATUS = Object.freeze({
+  REVISION_NEEDED: "Revision needed",
+  APPROVED: "Approved"
+});
+
+function findMissingFields(fields, requiredFieldNames) {
+  return requiredFieldNames.filter((fieldName) => {
+    const value = fields[fieldName];
+
+    if (value === null || value === undefined) {
+      return true;
+    }
+
+    if (typeof value === "string") {
+      return value.trim() === "";
+    }
+
+    if (Array.isArray(value)) {
+      return value.length === 0;
+    }
+
+    return false;
+  });
+}
+
+async function resolveNewsletterAction(recordId) {
+  const normalizedRecordId = String(
+    recordId || ""
+  ).trim();
+
+  if (!/^rec[A-Za-z0-9]+$/.test(normalizedRecordId)) {
+    throw new Error(
+      "A valid Airtable 'record_id' is required"
+    );
+  }
+
+  const record = await getRecord(
+    "newsletterMaestro",
+    "Newsletters",
+    normalizedRecordId
+  );
+
+  const fields = record.fields || {};
+  const status = fields.Status || null;
+
+  /*
+   * REVISION ROUTE
+   *
+   * Hyperagent uses record_id to retrieve the complete
+   * newsletter record directly from Airtable.
+   */
+  if (status === NEWSLETTER_STATUS.REVISION_NEEDED) {
+    const missing = findMissingFields(fields, [
+      "Draft Text",
+      "Review Feedback"
+    ]);
+
+    if (missing.length > 0) {
+      return {
+        eligible: false,
+        action: "blocked",
+        record_id: record.id,
+        status,
+        reason:
+          `Revision cannot start; missing Airtable fields: ` +
+          missing.join(", ")
+      };
+    }
+
+    return {
+      eligible: true,
+      action: "revise",
+      record_id: record.id,
+      status,
+      revision_number: Number(
+        fields["Revision #"] || 0
+      )
+    };
+  }
+
+  /*
+   * APPROVAL / MAILERLITE ROUTE
+   */
+  if (status === NEWSLETTER_STATUS.APPROVED) {
+    const missing = findMissingFields(fields, [
+      "Title",
+      "Subject Line",
+      "Email Body",
+      "Scheduled Date",
+      "Segment"
+    ]);
+
+    if (missing.length > 0) {
+      return {
+        eligible: false,
+        action: "blocked",
+        record_id: record.id,
+        status,
+        reason:
+          `Approved newsletter cannot be scheduled; ` +
+          `missing Airtable fields: ${missing.join(", ")}`
+      };
+    }
+
+    return {
+      eligible: true,
+      action: "schedule",
+      record_id: record.id,
+      status,
+
+      payload: {
+        title: fields.Title,
+        subject_line: fields["Subject Line"],
+        preheader: fields.Preheader || "",
+        email_body: fields["Email Body"],
+        cta_text: fields["CTA Text"] || "",
+        cta_url: fields["CTA URL"] || "",
+        scheduled_date: fields["Scheduled Date"],
+        segment: fields.Segment
+      }
+    };
+  }
+
+  /*
+   * STATUS DOES NOT AUTHORIZE AN ACTION
+   */
+  return {
+    eligible: false,
+    action: "ignore",
+    record_id: record.id,
+    status,
+    reason:
+      `Status '${status || "blank"}' does not authorize ` +
+      `revision or scheduling`
+  };
+}
+
 /* -------------------------------------------------------
  COMPANY OPERATIONS' HELPERS
  -------------------------------------------------------*/
@@ -897,6 +1089,65 @@ const server = http.createServer(async (req, res) => {
   };
 
   try {
+ /* -------------------------
+       PUBLIC HEALTH ROUTES
+    ------------------------- */
+
+    if (
+      (path === "/" || path === "/health") &&
+      req.method === "GET"
+    ) {
+      return send(200, {
+        ok: true,
+        status: "healthy",
+        service: "Sacred Obsidian Airtable API"
+      });
+    }
+
+    /* -------------------------
+       PROTECTED ROUTES
+    ------------------------- */
+
+    if (!hasValidBearerToken(req)) {
+      res.setHeader(
+        "WWW-Authenticate",
+        'Bearer realm="Sacred Obsidian API"'
+      );
+
+      return send(401, {
+        ok: false,
+        error: "Unauthorized"
+      });
+    }
+
+    /* -------------------------
+       NEWSLETTER ROUTES
+    ------------------------- */
+
+    // POST /newsletter/action/resolve
+    // Body: { "record_id": "rec..." }
+
+    if (
+      path === "/newsletter/action/resolve" &&
+      req.method === "POST"
+    ) {
+      const parsedBody = await parseBody(req);
+
+      const body = normalizeObjectBody(
+        parsedBody,
+        "newsletter/action/resolve"
+      );
+
+      const result = await resolveNewsletterAction(
+        body.record_id || body.id
+      );
+
+      return send(200, {
+        ok: true,
+        ...result
+      });
+    }
+    
     /* -------------------------
        GENERIC CRUD ROUTES
     ------------------------- */
@@ -1245,11 +1496,10 @@ const body = normalizeObjectBody(
     /* -------------------------
        DEFAULT RESPONSE
     ------------------------- */
-    return send(200, {
-      status: "ok",
-      message: "Multi-base Airtable MCP server is running",
-      bases: Object.keys(BASES)
-    });
+   return send(404, {
+  ok: false,
+  error: "Route not found"
+});
 
   } catch (error) {
     console.error("Error handling request:", error.message);
